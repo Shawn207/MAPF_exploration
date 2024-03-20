@@ -1,4 +1,5 @@
 import heapq
+import numpy as np
 
 def move(loc, dir):
     directions = [(0, -1), (1, 0), (0, 1), (-1, 0), (0,0)]
@@ -400,6 +401,26 @@ def joint_state_a_star(my_map, starts, goals, h_values, num_agents):
         # import pdb;pdb.set_trace()
     return None  # Failed to find solutions
 
+def select_target(my_map, information_map, start_loc, h_values, agent, constraints):
+    best_information_gain = 0
+    best_target = None
+    best_path = None
+    for i in range(my_map):
+        for j in range(my_map[0]):
+            if np.sqrt((start_loc-i)**2 + (start_loc-j)**2) >= 5:
+                continue
+            current_h_values = compute_heuristics(my_map, (i,j))
+            path = a_star(my_map, start_loc, (i,j), current_h_values, 0, agent, constraints)
+            # calculate total information gain
+            information_gain = 0
+            for loc in path:
+                information_gain += information_map[loc[0]][loc[1]]
+            # update best target
+            if information_gain > best_information_gain:
+                best_information_gain = information_gain
+                best_target = (i,j)
+                best_path = path
+    return best_target, best_path
 
 if __name__ == "__main__":
     # test generate_motions_recursive

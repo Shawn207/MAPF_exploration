@@ -97,6 +97,11 @@ class CBSSolver(object):
         self.CPU_time = 0
 
         self.open_list = []
+        self.information_map = copy.deepcopy(1-my_map)
+        for i in range(len(self.information_map)):
+            for j in range(len(self.information_map[0])):
+                self.information_map[i][j] = 1 - self.information_map[i][j]
+
 
         # compute heuristics for the low-level search
         self.heuristics = []
@@ -188,6 +193,10 @@ class CBSSolver(object):
                 self.push_node(new_node)
             # import pdb;pdb.set_trace()
             
+        # update infomration map for each path
+        for path in root['paths']:
+            for i in range(len(path)):
+                self.information_map[path[i][0]][path[i][1]] = 0
 
         # These are just to print debug output - can be modified once you implement the high-level search
         # self.print_results(root)
