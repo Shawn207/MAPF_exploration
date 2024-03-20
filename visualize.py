@@ -3,6 +3,7 @@ from matplotlib.patches import Circle, Rectangle
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import animation
+import math
 
 Colors = ['green', 'blue', 'orange']
 
@@ -30,7 +31,7 @@ class Animation:
         self.ax = self.fig.add_subplot(111, aspect='equal')
         self.fig.subplots_adjust(left=0, right=1, bottom=0, top=1, wspace=None, hspace=None)
         # self.ax.set_frame_on(False)
-
+        
         self.patches = []
         self.artists = []
         self.agents = dict()
@@ -49,6 +50,8 @@ class Animation:
             for j in range(len(self.my_map[0])):
                 if self.my_map[i][j]:
                     self.patches.append(Rectangle((i - 0.5, j - 0.5), 1, 1, facecolor='gray', edgecolor='gray'))
+                else:
+                    self.patches.append(Rectangle((i - 0.5, j - 0.5), 1, 1, facecolor='white', edgecolor='gray', alpha=0.3))
 
         # create agents:
         self.T = 0
@@ -93,6 +96,13 @@ class Animation:
         return self.patches + self.artists
 
     def animate_func(self, t):
+        if t==0:
+            # reset all pitches corresponding to the non-obstacle cells
+            for i in range(len(self.my_map)):
+                for j in range(len(self.my_map[0])):
+                    if not self.my_map[i][j]:
+                        self.patches[1 + j + i*len(self.my_map[0])].set_facecolor('white')
+        
         for k in range(len(self.paths)):
             pos = self.get_state(t / 10, self.paths[k])
             self.agents[k].center = (pos[0], pos[1])
@@ -101,6 +111,17 @@ class Animation:
         # reset all colors
         for _, agent in self.agents.items():
             agent.set_facecolor(agent.original_face_color)
+            
+        for i in range(len(self.paths)):
+            path = self.paths[i]
+            agent = self.agents[i]
+            for i in range(math.floor(t / 10)):
+                if i < len(path):
+                    pos = path[i]
+                    # set the color of the cell to the color of the agent. directly set color in the patch list
+                    self.patches[1 + pos[1] + pos[0]*len(self.my_map[0])].set_facecolor(agent.original_face_color)
+                    
+                    
 
         # check drive-drive collisions
         agents_array = [agent for _, agent in self.agents.items()]

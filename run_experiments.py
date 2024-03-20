@@ -4,9 +4,9 @@ import glob
 from pathlib import Path
 from cbs import CBSSolver
 from pbs import PBSSolver
-from independent import IndependentSolver
-from joint_state import JointStateSolver
-from prioritized import PrioritizedPlanningSolver
+# from independent import IndependentSolver
+# from joint_state import JointStateSolver
+# from prioritized import PrioritizedPlanningSolver
 from visualize import Animation
 from single_agent_planner import get_sum_of_cost
 
