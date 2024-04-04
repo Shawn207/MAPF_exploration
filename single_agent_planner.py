@@ -1,6 +1,7 @@
 import heapq
 import numpy as np
 
+node_count = 0
 def move(loc, dir):
     directions = [(0, -1), (1, 0), (0, 1), (-1, 0), (0,0)]
     # directions = [(0, -1), (1, 0), (0, 1), (-1, 0)]
@@ -162,11 +163,13 @@ def is_constrained(curr_loc, next_loc, next_time, constraint_table):
 
 
 def push_node(open_list, node):
-    heapq.heappush(open_list, (node['g_val'] + node['h_val'], node['h_val'], node['loc'], node))
+    global node_count
+    heapq.heappush(open_list, (node['g_val'] + node['h_val'], node['h_val'], node['loc'], node_count, node))
+    node_count += 1
 
 
 def pop_node(open_list):
-    _, _, _, curr = heapq.heappop(open_list)
+    _, _, _, _, curr = heapq.heappop(open_list)
     return curr
 
 
@@ -186,7 +189,7 @@ def all_in_map(map, locs):
             return False
     return True
 
-def a_star(my_map, start_loc, goal_loc, h_values, agent, constraints):
+def a_star(my_map, start_loc, goal_loc, h_values, agent, constraints, information_map):
     """ my_map      - binary obstacle map
         start_loc   - start position
         goal_loc    - goal position
@@ -198,6 +201,7 @@ def a_star(my_map, start_loc, goal_loc, h_values, agent, constraints):
     # Task 1.2/1.3/1.4: Extend the A* search to search in the space-time domain
     #           rather than space domain, only.
     # print(agent)
+    visited_penalty = 100
     Manhattan_distance = abs(start_loc[0] - goal_loc[0]) + abs(start_loc[1] - goal_loc[1])
     open_list = []
     closed_list = dict()
@@ -265,8 +269,11 @@ def a_star(my_map, start_loc, goal_loc, h_values, agent, constraints):
                 continue
             if is_constrained(curr['loc'], child_loc, curr['time_stamp']+1 , constraints_table):
                 continue
+            visited_cost = 0
+            if information_map[child_loc[0]][child_loc[1]] == 0:  # Check if the cell was visited
+                visited_cost += visited_penalty  # Add penalty for visited cells
             child = {'loc': child_loc,
-                    'g_val': curr['g_val'] + 1,
+                    'g_val': curr['g_val'] + 1 + visited_cost,
                     'h_val': h_values[child_loc],
                     'parent': curr,
                     'time_stamp': curr['time_stamp'] + 1}
@@ -283,6 +290,42 @@ def a_star(my_map, start_loc, goal_loc, h_values, agent, constraints):
                 push_node(open_list, child)
 
     return None  # Failed to find solutions
+
+def select_target(my_map, information_map, start_loc, h_values, agent, constraints):
+    best_information_gain = 0
+    best_target = None
+    best_path = None
+    radius = 3
+    max_radius = 10
+    found_solution = False
+    while not found_solution and radius <= max_radius:
+        for i in range(len(my_map)):
+            for j in range(len(my_map[0])):
+                goal_loc = (i,j)
+                if (not in_map(my_map, goal_loc)) or (my_map[goal_loc[0]][goal_loc[1]]):
+                    continue
+                if np.sqrt((start_loc[0]-i)**2 + (start_loc[1]-j)**2) >= radius:
+                    continue
+                current_h_values = compute_heuristics(my_map, goal_loc)
+                #print(goal_loc)
+                #print(start_loc)
+                path = a_star(my_map, start_loc, goal_loc, current_h_values, agent, constraints, information_map)
+                if path is None:
+                    continue
+                # calculate total information gain
+                information_gain = 0
+                for loc in path:
+                    information_gain += information_map[loc[0]][loc[1]]
+                # update best target
+                if information_gain > best_information_gain:
+                    best_information_gain = information_gain
+                    best_target = (i,j)
+                    best_path = path
+                    found_solution = True
+
+        if not found_solution:
+            radius += 1
+    return best_target, best_path
 
 def joint_state_a_star(my_map, starts, goals, h_values, num_agents):
     """ my_map      - binary obstacle map
@@ -400,27 +443,6 @@ def joint_state_a_star(my_map, starts, goals, h_values, num_agents):
         
         # import pdb;pdb.set_trace()
     return None  # Failed to find solutions
-
-def select_target(my_map, information_map, start_loc, h_values, agent, constraints):
-    best_information_gain = 0
-    best_target = None
-    best_path = None
-    for i in range(my_map):
-        for j in range(my_map[0]):
-            if np.sqrt((start_loc-i)**2 + (start_loc-j)**2) >= 5:
-                continue
-            current_h_values = compute_heuristics(my_map, (i,j))
-            path = a_star(my_map, start_loc, (i,j), current_h_values, 0, agent, constraints)
-            # calculate total information gain
-            information_gain = 0
-            for loc in path:
-                information_gain += information_map[loc[0]][loc[1]]
-            # update best target
-            if information_gain > best_information_gain:
-                best_information_gain = information_gain
-                best_target = (i,j)
-                best_path = path
-    return best_target, best_path
 
 if __name__ == "__main__":
     # test generate_motions_recursive

@@ -1,7 +1,7 @@
 import time as timer
 import heapq
 import random
-from single_agent_planner import compute_heuristics, a_star, get_location, get_sum_of_cost
+from single_agent_planner import compute_heuristics, a_star, get_location, get_sum_of_cost, select_target
 import copy
 
 def detect_first_collision_for_path_pair(path1, path2):
@@ -81,7 +81,7 @@ def standard_splitting(collision):
 class CBSSolver(object):
     """The high-level search of CBS."""
 
-    def __init__(self, my_map, starts, goals):
+    def __init__(self, my_map, starts):
         """my_map   - list of lists specifying obstacle positions
         starts      - [(x1, y1), (x2, y2), ...] list of start locations
         goals       - [(x1, y1), (x2, y2), ...] list of goal locations
@@ -89,15 +89,14 @@ class CBSSolver(object):
 
         self.my_map = my_map
         self.starts = starts
-        self.goals = goals
-        self.num_of_agents = len(goals)
+        self.num_of_agents = len(self.starts)
 
         self.num_of_generated = 0
         self.num_of_expanded = 0
         self.CPU_time = 0
 
         self.open_list = []
-        self.information_map = copy.deepcopy(1-my_map)
+        self.information_map = copy.deepcopy(my_map)
         for i in range(len(self.information_map)):
             for j in range(len(self.information_map[0])):
                 self.information_map[i][j] = 1 - self.information_map[i][j]
@@ -105,8 +104,6 @@ class CBSSolver(object):
 
         # compute heuristics for the low-level search
         self.heuristics = []
-        for goal in self.goals:
-            self.heuristics.append(compute_heuristics(my_map, goal))
 
     def push_node(self, node):
         heapq.heappush(self.open_list, (node['cost'], len(node['collisions']), self.num_of_generated, node))
@@ -118,6 +115,15 @@ class CBSSolver(object):
         # print("Expand node {}".format(id))
         self.num_of_expanded += 1
         return node
+    
+    def update_information_map(self, paths):
+        # Update the information map based on the paths
+        for path in paths:
+            for loc in path:
+                self.information_map[loc[0]][loc[1]] = 0  # Mark as explored
+
+    def is_fully_explored(self):
+        return all(cell == 0 for row in self.information_map for cell in row)
 
     def find_solution(self):
         """ Finds paths for all agents from their start locations to their goal locations
@@ -134,14 +140,17 @@ class CBSSolver(object):
         root = {'cost': 0,
                 'constraints': [],
                 'paths': [],
+                'targets': [],
                 'collisions': []}
         for i in range(self.num_of_agents):  # Find initial path for each agent
-            path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
-                          i, root['constraints'])
+            target, path = select_target(self.my_map, self.information_map, self.starts[i], self.heuristics, i, [])
             if path is None:
+                return None, None
                 raise BaseException('No solutions')
             root['paths'].append(path)
+            root['targets'].append(target)
 
+        print("here")
         root['cost'] = get_sum_of_cost(root['paths'])
         root['collisions'] = detect_collisions_among_all_paths(root['paths'])
         self.push_node(root)
@@ -163,28 +172,31 @@ class CBSSolver(object):
         #           Ensure to create a copy of any objects that your child nodes might inherit
         while self.open_list:
             # print("pop a node")
-            curr = self.pop_node()
+            current_node = self.pop_node()
             # print(curr)
             # print(curr['cost'])
             # return solution if this node has no collision
-            if len(curr['collisions']) == 0:
+            if not current_node['collisions']:
                 # import pdb;pdb.set_trace()
-                return curr['paths']
-            
+                return current_node['paths'], current_node['targets']
+   
             # choose the first collision and convert to a list of constraints
-            collision = curr['collisions'][0]
+            collision = current_node['collisions'][0]
+            #for collision in current_node['collisions']:
             constraints = standard_splitting(collision)
-            
             # Add a new child node to the open list for each constraint
             for constraint in constraints:
                 # print("Add a new child node to the open list for each constraint")
-                new_node = copy.deepcopy(curr)
+                new_node = copy.deepcopy(current_node)
                 if constraint not in new_node['constraints']:
                     new_node['constraints'].append(constraint)
-                    new_path = a_star(self.my_map, self.starts[constraint['agent']], self.goals[constraint['agent']], self.heuristics[constraint['agent']], constraint['agent'], new_node['constraints'])
+                    agent_index = constraint['agent']
+                    start_loc = self.starts[agent_index]
+                    new_target, new_path = select_target(self.my_map, self.information_map, start_loc, self.heuristics, agent_index, new_node['constraints'])
                 if new_path is None:
                     continue
                 new_node['paths'][constraint['agent']] = new_path
+                new_node['targets'][constraint['agent']] = new_target
                 new_node['cost'] = get_sum_of_cost(new_node['paths'])
                 new_node['collisions'] = detect_collisions_among_all_paths(new_node['paths'])
                 # print(constraint)
@@ -192,16 +204,39 @@ class CBSSolver(object):
                 # print(new_node['collisions'])
                 self.push_node(new_node)
             # import pdb;pdb.set_trace()
-            
-        # update infomration map for each path
-        for path in root['paths']:
-            for i in range(len(path)):
-                self.information_map[path[i][0]][path[i][1]] = 0
 
-        # These are just to print debug output - can be modified once you implement the high-level search
-        # self.print_results(root)
-        # import pdb;pdb.set_trace()
-        return root['paths']
+    def explore_environment(self):
+        # Initialize exploration by running CBS once to get initial paths
+        final_paths = [[] for _ in range(self.num_of_agents)]
+        initial_paths, next_start = self.find_solution()
+        if initial_paths is None:
+            raise Exception("No initial exploration paths found.")
+        for i, path in enumerate(initial_paths):
+            final_paths[i].extend(path)  # Accumulate initial paths
+        # Update information map based on initial exploration
+        self.update_information_map(initial_paths)
+
+        # Continue exploration until all areas are explored
+        while not self.is_fully_explored():
+
+            # Run CBS with the new targets to resolve conflicts and get new paths
+            self.starts = next_start
+            self.open_list = []
+            self.heuristics = []
+            self.num_of_generated = 0
+            self.num_of_expanded = 0
+            self.CPU_time = 0
+            print(self.starts)
+            #print("here")
+            new_paths, next_start = self.find_solution()
+            if new_paths is None:
+                return final_paths
+                raise Exception("No further exploration paths found.")
+            for i, path in enumerate(new_paths):
+                final_paths[i].extend(path[1:])  # Skip the first position as it's the last of the previous path
+            # Update information map based on the new exploration
+            self.update_information_map(new_paths)
+        return final_paths
 
 
     def print_results(self, node):

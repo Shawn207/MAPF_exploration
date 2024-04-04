@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from matplotlib.patches import Circle, Rectangle
+from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import animation
@@ -32,6 +33,7 @@ class Animation:
         self.fig.subplots_adjust(left=0, right=1, bottom=0, top=1, wspace=None, hspace=None)
         # self.ax.set_frame_on(False)
         
+        self.path_lines = []
         self.patches = []
         self.artists = []
         self.agents = dict()
@@ -93,7 +95,12 @@ class Animation:
             self.ax.add_patch(p)
         for a in self.artists:
             self.ax.add_artist(a)
-        return self.patches + self.artists
+        self.lines = []  # Initialize a list to store line objects
+        for i, path in enumerate(self.paths):
+            # Initially, lines are empty or just contain the starting point
+            line, = self.ax.plot([], [], color=Colors[i % len(Colors)], linewidth=2, zorder=3)
+            self.lines.append(line)
+        return self.patches + self.artists + self.lines
 
     def animate_func(self, t):
         if t==0:
@@ -111,7 +118,7 @@ class Animation:
         # reset all colors
         for _, agent in self.agents.items():
             agent.set_facecolor(agent.original_face_color)
-            
+
         for i in range(len(self.paths)):
             path = self.paths[i]
             agent = self.agents[i]
@@ -121,8 +128,14 @@ class Animation:
                     # set the color of the cell to the color of the agent. directly set color in the patch list
                     self.patches[1 + pos[1] + pos[0]*len(self.my_map[0])].set_facecolor(agent.original_face_color)
                     
-                    
-
+        # Update lines for each path
+        for i, path in enumerate(self.paths):
+            time_step = min(math.floor(t / 10), len(path))
+            current_path_segment = path[:time_step]
+            
+            if current_path_segment:  # Check if the segment is not empty
+                x_vals, y_vals = zip(*current_path_segment)
+                self.lines[i].set_data(x_vals, y_vals)  # Update line data
         # check drive-drive collisions
         agents_array = [agent for _, agent in self.agents.items()]
         for i in range(0, len(agents_array)):
@@ -136,7 +149,7 @@ class Animation:
                     d2.set_facecolor('red')
                     print("COLLISION! (agent-agent) ({}, {}) at time {}".format(i, j, t/10))
 
-        return self.patches + self.artists
+        return self.patches + self.artists + self.lines
 
     @staticmethod
     def get_state(t, path):

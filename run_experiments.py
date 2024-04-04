@@ -92,23 +92,11 @@ if __name__ == '__main__':
 
         if args.solver == "CBS":
             print("***Run CBS***")
-            cbs = CBSSolver(my_map, starts, goals)
-            paths = cbs.find_solution()
+            cbs = CBSSolver(my_map, starts)
+            paths = cbs.explore_environment()
         elif args.solver == "PBS":
             print("***Run PBS***")
             solver = PBSSolver(my_map, starts, goals)
-            paths = solver.find_solution()
-        elif args.solver == "Independent":
-            print("***Run Independent***")
-            solver = IndependentSolver(my_map, starts, goals)
-            paths = solver.find_solution()
-        elif args.solver == "JointState":
-            print("***Run JointState***")
-            solver = JointStateSolver(my_map, starts, goals)
-            paths = solver.find_solution()
-        elif args.solver == "Prioritized":
-            print("***Run Prioritized***")
-            solver = PrioritizedPlanningSolver(my_map, starts, goals)
             paths = solver.find_solution()
         else:
             raise RuntimeError("Unknown solver!")
