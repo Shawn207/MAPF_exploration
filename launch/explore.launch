@@ -1,0 +1,9 @@
+<launch>
+    <param name="use_sim_time" value="true"/>
+    <node pkg="mapf_exploration" type="run_experiments.py" name="multi" output="screen">
+        <param name="instance" type="str" value="instances/test_22.txt" />
+        <param name="solver" type="str" value="CBS" />
+        <param name="/use_sim_time" value="true"/>
+
+    </node>
+</launch>

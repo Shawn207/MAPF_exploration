@@ -1,4 +1,6 @@
 #!/usr/bin/python
+import os
+import rospy
 import argparse
 import glob
 from pathlib import Path
@@ -13,9 +15,9 @@ from single_agent_planner import get_sum_of_cost
 SOLVER = "CBS"
 
 def print_mapf_instance(my_map, starts, goals):
-    print('Start locations')
+    rospy.loginfo('Start locations')
     print_locations(my_map, starts)
-    print('Goal locations')
+    rospy.loginfo('Goal locations')
     print_locations(my_map, goals)
 
 
@@ -33,7 +35,7 @@ def print_locations(my_map, locations):
             else:
                 to_print += '. '
         to_print += '\n'
-    print(to_print)
+    rospy.loginfo(to_print)
 
 
 def import_mapf_instance(filename):
@@ -71,44 +73,49 @@ def import_mapf_instance(filename):
     return my_map, starts, goals
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Runs various MAPF algorithms')
-    parser.add_argument('--instance', type=str, default=None,
-                        help='The name of the instance file(s)')
-    parser.add_argument('--batch', action='store_true', default=False,
-                        help='Use batch output instead of animation')
-    parser.add_argument('--solver', type=str, default=SOLVER,
-                        help='The solver to use (one of: {CBS,PBS,Independent,Prioritized}), defaults to ' + str(SOLVER))
+def main():
+    rospy.init_node('mapf_exploration_node', anonymous=True)
+    solver = rospy.get_param('~solver', SOLVER)
+    instance = rospy.get_param('~instance', 'instances/test_21.txt')
+    batch = rospy.get_param('~batch', False)
 
-    args = parser.parse_args()
-    print(f"Solver argument received: {args.solver}")
+    rospy.loginfo(f"Instance Path received: {instance}")
+    rospy.loginfo(f"Solver argument received: {solver}")
     result_file = open("results.csv", "w", buffering=1)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file = os.path.join(script_dir, instance)
+    
+    if not os.path.exists(file):
+        rospy.logerr(f"Instance file '{file}' does not exist.")
+        return
+    
+    print("***Import an instance***")
+    my_map, starts, goals = import_mapf_instance(file)
+    print_mapf_instance(my_map, starts, goals)
 
-    for file in sorted(glob.glob(args.instance)):
+    if solver == "CBS":
+        print("***Run CBS***")
+        cbs = CBSSolver(my_map, starts)
+        paths = cbs.explore_environment()
+    elif solver == "PBS":
+        rospy.loginfo("***Run PBS***")
+        solver = PBSSolver(my_map, starts, goals)
+        paths = solver.find_solution()
+    else:
+        raise RuntimeError("Unknown solver!")
 
-        print("***Import an instance***")
-        my_map, starts, goals = import_mapf_instance(file)
-        print_mapf_instance(my_map, starts, goals)
+    cost = get_sum_of_cost(paths)
+    result_file.write("{},{}\n".format(file, cost))
 
-        if args.solver == "CBS":
-            print("***Run CBS***")
-            cbs = CBSSolver(my_map, starts)
-            paths = cbs.explore_environment()
-        elif args.solver == "PBS":
-            print("***Run PBS***")
-            solver = PBSSolver(my_map, starts, goals)
-            paths = solver.find_solution()
-        else:
-            raise RuntimeError("Unknown solver!")
-        # import pdb;pdb.set_trace()
-        cost = get_sum_of_cost(paths)
-        result_file.write("{},{}\n".format(file, cost))
+    if not batch:
+        print("***Test paths on a simulation***")
+        animation = Animation(my_map, starts, goals, paths)
+        animation.show()
 
-
-        if not args.batch:
-            print("***Test paths on a simulation***")
-            # import pdb;pdb.set_trace()
-            animation = Animation(my_map, starts, goals, paths)
-            # animation.save("output.mp4", 1.0)
-            animation.show()
     result_file.close()
+
+if __name__ == '__main__':
+    try:
+        main()
+    except rospy.ROSInterruptException:
+        pass
