@@ -1,8 +1,10 @@
 import time as timer
 import heapq
 import random
-from single_agent_planner import compute_heuristics, a_star, get_location, get_sum_of_cost, select_target
+from single_agent_planner import compute_heuristics, a_star, get_location, get_sum_of_cost
+from heuristic_informed_search_algorithms import select_target
 import copy
+import numpy as np
 
 def detect_first_collision_for_path_pair(path1, path2):
     ##############################
@@ -75,7 +77,10 @@ def standard_splitting(collision):
     
     return constraints
 
-
+def initialize_momentum_field_map(map_size):
+        # Create a momentum field map initialized with zero vectors
+        momentum_field_map = np.zeros((map_size[0], map_size[1], 2))  # Assuming 2D map, store (dx, dy) at each cell
+        return momentum_field_map
 
 
 class CBSSolver(object):
@@ -97,6 +102,9 @@ class CBSSolver(object):
 
         self.open_list = []
         self.information_map = copy.deepcopy(my_map)
+        self.map_size = (len(my_map), len(my_map[0]))
+        self.momentum_map = initialize_momentum_field_map(self.map_size)
+
         for i in range(len(self.information_map)):
             for j in range(len(self.information_map[0])):
                 self.information_map[i][j] = 1 - self.information_map[i][j]
@@ -121,6 +129,35 @@ class CBSSolver(object):
         for path in paths:
             for loc in path:
                 self.information_map[loc[0]][loc[1]] = 0  # Mark as explored
+    
+    def update_momentum_field_map(self, paths):
+        """
+        Update the momentum field map with paths from multiple agents.
+        :param momentum_field_map: A 3D numpy array where the first two dimensions correspond to spatial coordinates
+                                and the third dimension stores a 2D vector.
+        :param paths: A list of paths, each path is a list of tuples (x, y) coordinates.
+        """
+        for path in paths:
+            for i in range(len(path) - 1):
+                current_pos = path[i]
+                next_pos = path[i + 1]
+                
+                # Calculate the movement vector
+                movement_vector = np.array(next_pos) - np.array(current_pos)
+                
+                # Normalize the movement vector
+                if np.linalg.norm(movement_vector) > 0:
+                    movement_vector = movement_vector / np.linalg.norm(movement_vector)
+                
+                # Update the momentum field map at the current position
+                if 0 <= current_pos[0] < self.momentum_map.shape[0] and 0 <= current_pos[1] < self.momentum_map.shape[1]:
+                    self.momentum_map[current_pos[0], current_pos[1]] += movement_vector
+
+        # Optionally normalize the vectors in the momentum map
+        for i in range(self.momentum_map.shape[0]):
+            for j in range(self.momentum_map.shape[1]):
+                if np.linalg.norm(self.momentum_map[i, j]) > 0:
+                    self.momentum_map[i, j] = self.momentum_map[i, j] / np.linalg.norm(self.momentum_map[i, j])
 
     def is_fully_explored(self):
         return all(cell == 0 for row in self.information_map for cell in row)
@@ -129,7 +166,7 @@ class CBSSolver(object):
         """ Finds paths for all agents from their start locations to their goal locations
 
         """
-
+        #print("here1")
         self.start_time = timer.time()
 
         # Generate the root node
@@ -142,15 +179,16 @@ class CBSSolver(object):
                 'paths': [],
                 'targets': [],
                 'collisions': []}
+        #print(self.starts)
         for i in range(self.num_of_agents):  # Find initial path for each agent
-            target, path = select_target(self.my_map, self.information_map, self.starts[i], self.heuristics, i, [])
+            target, path = select_target(self.my_map, self.information_map, self.starts[i], self.heuristics, i, [], self.starts)
             if path is None:
                 return None, None
                 raise BaseException('No solutions')
             root['paths'].append(path)
             root['targets'].append(target)
 
-        print("here")
+        #print("here")
         root['cost'] = get_sum_of_cost(root['paths'])
         root['collisions'] = detect_collisions_among_all_paths(root['paths'])
         self.push_node(root)
@@ -178,6 +216,7 @@ class CBSSolver(object):
             # return solution if this node has no collision
             if not current_node['collisions']:
                 # import pdb;pdb.set_trace()
+                #print("here2")
                 return current_node['paths'], current_node['targets']
    
             # choose the first collision and convert to a list of constraints
@@ -185,25 +224,24 @@ class CBSSolver(object):
             #for collision in current_node['collisions']:
             constraints = standard_splitting(collision)
             # Add a new child node to the open list for each constraint
+            # Create a child node for each new constraint
             for constraint in constraints:
-                # print("Add a new child node to the open list for each constraint")
-                new_node = copy.deepcopy(current_node)
-                if constraint not in new_node['constraints']:
-                    new_node['constraints'].append(constraint)
-                    agent_index = constraint['agent']
-                    start_loc = self.starts[agent_index]
-                    new_target, new_path = select_target(self.my_map, self.information_map, start_loc, self.heuristics, agent_index, new_node['constraints'])
+                child_node = copy.deepcopy(current_node)
+                child_node['constraints'].append(constraint)
+                # Replan paths for all agents considering the new constraint
+                agent_id = constraint['agent']  # This should correspond to the agent involved in the collision
+                start_loc = self.starts[agent_id]
+                new_target, new_path = select_target(self.my_map, self.information_map, start_loc, self.heuristics, agent_id, child_node['constraints'], current_node['paths'])
+                print(new_target)
                 if new_path is None:
-                    continue
-                new_node['paths'][constraint['agent']] = new_path
-                new_node['targets'][constraint['agent']] = new_target
-                new_node['cost'] = get_sum_of_cost(new_node['paths'])
-                new_node['collisions'] = detect_collisions_among_all_paths(new_node['paths'])
-                # print(constraint)
-                # print(new_path)
-                # print(new_node['collisions'])
-                self.push_node(new_node)
-            # import pdb;pdb.set_trace()
+                    # If a path can't be found for any agent, skip this child node
+                    break
+                # This else belongs to the for loop, executed only if the loop wasn't broken
+                child_node['paths'][agent_id] = new_path
+                child_node['targets'][agent_id] = new_target
+                child_node['cost'] = get_sum_of_cost(child_node['paths'])
+                child_node['collisions'] = detect_collisions_among_all_paths(child_node['paths'])
+                self.push_node(child_node)
 
     def explore_environment(self):
         # Initialize exploration by running CBS once to get initial paths
@@ -215,6 +253,7 @@ class CBSSolver(object):
             final_paths[i].extend(path)  # Accumulate initial paths
         # Update information map based on initial exploration
         self.update_information_map(initial_paths)
+        self.update_momentum_field_map(initial_paths)
 
         # Continue exploration until all areas are explored
         while not self.is_fully_explored():
@@ -236,6 +275,7 @@ class CBSSolver(object):
                 final_paths[i].extend(path[1:])  # Skip the first position as it's the last of the previous path
             # Update information map based on the new exploration
             self.update_information_map(new_paths)
+            self.update_momentum_field_map(new_paths)
         return final_paths
 
 
