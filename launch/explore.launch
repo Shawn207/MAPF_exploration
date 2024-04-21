@@ -1,7 +1,7 @@
 <launch>
     <param name="use_sim_time" value="false"/>
     <node pkg="mapf_exploration" type="run_ros.py" name="multi" output="screen">
-        <param name="instance" type="str" value="instances/test_22.txt" />
+        <param name="instance" type="str" value="instances/large_lab_5.txt" />
         <param name="solver" type="str" value="CBS" />
 
     </node>

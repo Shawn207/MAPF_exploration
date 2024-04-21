@@ -207,6 +207,7 @@ def a_star(my_map, start_loc, goal_loc, h_values, agent, constraints, informatio
     closed_list = dict()
     closed_list_space = []
     earliest_goal_timestep = 0
+    # print("start location: ", start_loc)
     h_value = h_values[start_loc]
     # constraints = [{'agent': 0, 'loc': (1, 5), 'time_step': 4}]
     constraints_table = build_constraint_table(constraints, agent)
@@ -306,25 +307,34 @@ def select_target(my_map, information_map, start_loc, h_values, agent, constrain
                     continue
                 if np.sqrt((start_loc[0]-i)**2 + (start_loc[1]-j)**2) >= radius:
                     continue
+                # print("goal location: ", goal_loc)
                 current_h_values = compute_heuristics(my_map, goal_loc)
                 #print(goal_loc)
-                #print(start_loc)
+                
                 path = a_star(my_map, start_loc, goal_loc, current_h_values, agent, constraints, information_map)
                 if path is None:
                     continue
                 # calculate total information gain
                 information_gain = 0
+                # print("path: ", path)
                 for loc in path:
+                    # print("path location: ", loc)
+                    # print("get info gain: ", information_map[loc[0]][loc[1]])
                     information_gain += information_map[loc[0]][loc[1]]
                 # update best target
+                # print("expect information gain: ", information_gain)
                 if information_gain > best_information_gain:
                     best_information_gain = information_gain
                     best_target = (i,j)
                     best_path = path
                     found_solution = True
-
+        # print("select target: ", best_target, "radius: ", radius, "information gain: ", best_information_gain)
         if not found_solution:
             radius += 1
+    if not found_solution:
+        print("start location: ", start_loc)
+        print("information map: ", information_map)
+        import pdb;pdb.set_trace()
     return best_target, best_path
 
 def joint_state_a_star(my_map, starts, goals, h_values, num_agents):

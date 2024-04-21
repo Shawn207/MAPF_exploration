@@ -1,0 +1,3 @@
+int64 grid_idx_x
+int64 grid_idx_y
+float64 percent_info_gain
